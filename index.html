@@ -1,0 +1,269 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SD 提示词去重</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    background: #0f0f1a;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  header {
+    text-align: center;
+    padding: 24px 16px 8px;
+  }
+  header h1 {
+    font-size: 1.6rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    background: linear-gradient(135deg, #a78bfa, #60a5fa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  header p {
+    font-size: 0.85rem;
+    color: #64748b;
+    margin-top: 4px;
+  }
+  .container {
+    display: flex;
+    gap: 16px;
+    width: min(96vw, 1200px);
+    padding: 16px;
+    flex: 1;
+  }
+  @media (max-width: 720px) {
+    .container { flex-direction: column; }
+  }
+  .panel {
+    flex: 1;
+    background: #1a1a2e;
+    border: 1px solid #2a2a44;
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .panel-header .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-positive { background: #34d399; box-shadow: 0 0 6px #34d39988; }
+  .dot-negative { background: #f87171; box-shadow: 0 0 6px #f8717188; }
+  textarea {
+    flex: 1;
+    min-height: 280px;
+    background: #12121f;
+    border: 1px solid #2a2a44;
+    border-radius: 8px;
+    color: #e0e0e0;
+    font-size: 0.875rem;
+    font-family: "Consolas", "Microsoft YaHei", monospace;
+    line-height: 1.6;
+    padding: 12px;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  textarea:focus {
+    border-color: #6366f1;
+  }
+  .stats {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    min-height: 1.2em;
+  }
+  .stats .saved { color: #34d399; font-weight: 600; }
+  .btn-row {
+    display: flex;
+    gap: 8px;
+  }
+  button {
+    padding: 8px 18px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  button:active { transform: scale(0.97); }
+  .btn-dedup {
+    background: #6366f1;
+    color: #fff;
+    flex: 1;
+  }
+  .btn-dedup:hover { background: #818cf8; }
+  .btn-copy {
+    background: #2a2a44;
+    color: #cbd5e1;
+  }
+  .btn-copy:hover { background: #3a3a5a; }
+  .btn-copy.copied { background: #34d39933; color: #34d399; }
+  footer {
+    display: flex;
+    gap: 10px;
+    padding: 0 16px 24px;
+  }
+  .btn-all {
+    padding: 10px 28px;
+    font-size: 0.9rem;
+  }
+  .btn-all-dedup { background: #7c3aed; color: #fff; }
+  .btn-all-dedup:hover { background: #8b5cf6; }
+  .btn-all-copy { background: #1e293b; color: #cbd5e1; }
+  .btn-all-copy:hover { background: #334155; }
+  .btn-all-clear { background: #1e293b; color: #94a3b8; }
+  .btn-all-clear:hover { background: #334155; }
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #34d399;
+    color: #0f0f1a;
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>SD 提示词去重</h1>
+  <p>粘贴 → 去重 → 复制，正/负向提示词分别处理</p>
+</header>
+
+<div class="container">
+  <div class="panel" id="panel-positive">
+    <div class="panel-header">
+      <span class="dot dot-positive"></span> 正向提示词
+    </div>
+    <textarea id="pos-input" placeholder="在此粘贴正向提示词…"></textarea>
+    <div class="stats" id="pos-stats"></div>
+    <div class="btn-row">
+      <button class="btn-dedup" onclick="dedupPanel('pos')">去重</button>
+      <button class="btn-copy" onclick="copyPanel('pos', this)">复制</button>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-negative">
+    <div class="panel-header">
+      <span class="dot dot-negative"></span> 负向提示词
+    </div>
+    <textarea id="neg-input" placeholder="在此粘贴负向提示词…"></textarea>
+    <div class="stats" id="neg-stats"></div>
+    <div class="btn-row">
+      <button class="btn-dedup" onclick="dedupPanel('neg')">去重</button>
+      <button class="btn-copy" onclick="copyPanel('neg', this)">复制</button>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <button class="btn-all btn-all-dedup" onclick="dedupAll()">一键去重全部</button>
+  <button class="btn-all btn-all-copy" onclick="copyAll()">复制全部</button>
+  <button class="btn-all btn-all-clear" onclick="clearAll()">清空</button>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+function dedupe(text) {
+  const tags = text.split(',').map(t => t.trim()).filter(Boolean);
+  const seen = {};
+  const unique = [];
+  for (const t of tags) {
+    if (!(t in seen)) { seen[t] = true; unique.push(t); }
+  }
+  return { result: unique.join(', '), before: tags.length, after: unique.length };
+}
+
+function dedupPanel(side) {
+  const textarea = document.getElementById(side + '-input');
+  const stats = document.getElementById(side + '-stats');
+  const { result, before, after } = dedupe(textarea.value);
+  textarea.value = result;
+  const saved = before - after;
+  if (saved > 0) {
+    stats.innerHTML = before + ' tags → ' + after + ' tags，去重 <span class="saved">' + saved + '</span> 个';
+  } else if (before === 0) {
+    stats.innerHTML = '还没有粘贴提示词';
+  } else {
+    stats.innerHTML = before + ' tags，没有重复';
+  }
+}
+
+function copyPanel(side, btn) {
+  const textarea = document.getElementById(side + '-input');
+  navigator.clipboard.writeText(textarea.value).then(() => {
+    btn.classList.add('copied');
+    btn.textContent = '已复制';
+    setTimeout(() => { btn.classList.remove('copied'); btn.textContent = '复制'; }, 1500);
+    toast('已复制' + (side === 'pos' ? '正向' : '负向') + '提示词');
+  });
+}
+
+function dedupAll() {
+  dedupPanel('pos');
+  dedupPanel('neg');
+  toast('正/负向提示词已全部去重');
+}
+
+function copyAll() {
+  const pos = document.getElementById('pos-input').value;
+  const neg = document.getElementById('neg-input').value;
+  const text = '正向：' + pos + '\n负向：' + neg;
+  navigator.clipboard.writeText(text).then(() => toast('已复制全部提示词'));
+}
+
+function clearAll() {
+  document.getElementById('pos-input').value = '';
+  document.getElementById('neg-input').value = '';
+  document.getElementById('pos-stats').innerHTML = '';
+  document.getElementById('neg-stats').innerHTML = '';
+  toast('已清空');
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 1800);
+}
+
+// Auto-dedup on paste
+['pos', 'neg'].forEach(side => {
+  document.getElementById(side + '-input').addEventListener('paste', () => {
+    setTimeout(() => dedupPanel(side), 50);
+  });
+});
+</script>
+</body>
+</html>
